@@ -1,0 +1,159 @@
+import os
+import tkinter as tk
+from tkinter import ttk, messagebox
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+# Watchdog event handler to manage file system events
+class BeerkezettEventHandler(FileSystemEventHandler):
+    def __init__(self, indicator, refresh_files_callback):
+        # Initialize with a reference to the activity indicator and callback function
+        self.indicator = indicator
+        self.refresh_files_callback = refresh_files_callback
+
+    def on_any_event(self, event):
+        # Change the indicator to green to show activity
+        self.indicator.config(bg='green')
+        # Change back to red after 5 seconds
+        self.indicator.after(5000, lambda: self.indicator.config(bg='red'))
+        # Refresh the list of files in 'Beerkezett' directories
+        self.refresh_files_callback()
+
+def list_files_in_directory(directory):
+    file_list = []
+    beerkezett_files = {}
+    
+    # Walk through the directory and subdirectories
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            full_path = os.path.join(root, file)
+            file_list.append((root, file))
+            # Collect files in 'Beerkezett' directories
+            if "Beerkezett" in root:
+                if root not in beerkezett_files:
+                    beerkezett_files[root] = []
+                beerkezett_files[root].append(file)
+    
+    return file_list, beerkezett_files
+
+def display_files():
+    directory = directory_entry.get()
+    if not os.path.isdir(directory):
+        # Show an error message if the directory is invalid
+        messagebox.showerror("Error", "The specified path is not a directory or does not exist.")
+        return
+
+    files, beerkezett_files = list_files_in_directory(directory)
+    all_files_textbox.delete(1.0, tk.END)
+    beerkezett_files_textbox.delete(1.0, tk.END)
+    
+    # Display all files
+    if not files:
+        all_files_textbox.insert(tk.END, "No files found.")
+    else:
+        for file_info in files:
+            all_files_textbox.insert(tk.END, f"Directory: {file_info[0]}, \n\t\t\t\t\t ⌊ File: {file_info[1]}\n")
+    
+    # Display files in 'Beerkezett' directories
+    if not beerkezett_files:
+        beerkezett_files_textbox.insert(tk.END, "No files found in 'Beerkezett' directories.")
+    else:
+        for dir_path, files in beerkezett_files.items():
+            beerkezett_files_textbox.insert(tk.END, f"Directory: {dir_path}\n")
+            for file in files:
+                beerkezett_files_textbox.insert(tk.END, f"\t⌊ File: {file}\n")
+    
+    # Update the count of files in 'Beerkezett' directories
+    beerkezett_count_label.config(text=f"Files in 'Beerkezett' directories: {sum(len(files) for files in beerkezett_files.values())}")
+    
+    # Start watching 'Beerkezett' directories
+    start_watching_beerkezett(beerkezett_files)
+
+def start_watching_beerkezett(beerkezett_files):
+    global observer
+
+    if observer:
+        observer.stop()
+        observer.join()
+
+    observer = Observer()
+    # Create an event handler with a callback to refresh file list
+    event_handler = BeerkezettEventHandler(indicator, lambda: refresh_beerkezett_files(beerkezett_files))
+
+    for directory in beerkezett_files.keys():
+        observer.schedule(event_handler, directory, recursive=True)
+    
+    observer.start()
+
+def refresh_beerkezett_files(beerkezett_files):
+    directory = directory_entry.get()
+    files, new_beerkezett_files = list_files_in_directory(directory)
+    
+    beerkezett_files_textbox.delete(1.0, tk.END)
+    
+    if not new_beerkezett_files:
+        beerkezett_files_textbox.insert(tk.END, "No files found in 'Beerkezett' directories.")
+    else:
+        for dir_path, files in new_beerkezett_files.items():
+            beerkezett_files_textbox.insert(tk.END, f"Directory: {dir_path}\n")
+            for file in files:
+                beerkezett_files_textbox.insert(tk.END, f"\t⌊ File: {file}\n")
+    
+    # Update the count of files in 'Beerkezett' directories
+    beerkezett_count_label.config(text=f"Files in 'Beerkezett' directories: {sum(len(files) for files in new_beerkezett_files.values())}")
+
+# GUI setup
+root = tk.Tk()
+root.title("File Detective")
+
+mainframe = ttk.Frame(root, padding="10 10 10 10")
+mainframe.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+# Directory input label and field
+directory_label = ttk.Label(mainframe, text="Vizsgálandó mappa útvonala:")
+directory_label.grid(row=0, column=0, sticky=tk.W)
+
+directory_entry = ttk.Entry(mainframe, width=180)
+directory_entry.grid(row=0, column=1, sticky=(tk.W, tk.E))
+
+# Button to list files
+list_files_button = ttk.Button(mainframe, text="LISTÁZÁS", command=display_files)
+list_files_button.grid(row=0, column=2, sticky=tk.W)
+
+# Label and textbox for all files
+all_files_label = ttk.Label(mainframe, text="Összes fájl listája:")
+all_files_label.grid(row=1, column=0, columnspan=3, sticky=tk.W)
+
+all_files_textbox = tk.Text(mainframe, width=80, height=10)
+all_files_textbox.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E))
+
+# Label and textbox for 'Beerkezett' files
+beerkezett_files_label = ttk.Label(mainframe, text="Fájlok a 'Beerkezett' mappában:")
+beerkezett_files_label.grid(row=3, column=0, columnspan=3, sticky=tk.W)
+
+beerkezett_files_textbox = tk.Text(mainframe, width=180, height=20)
+beerkezett_files_textbox.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E))
+
+# Label for file count
+beerkezett_count_label = ttk.Label(mainframe, text="A 'Beerkezett' mappában ennyi fájl van: 0")
+beerkezett_count_label.grid(row=5, column=0, sticky=tk.W)
+
+# Indicator for activity
+indicator_label = ttk.Label(mainframe, text="A 'Beerkezett' mappa aktivitása:")
+indicator_label.grid(row=6, column=0, sticky=tk.W)
+
+indicator = tk.Label(mainframe, bg='red', width=2, height=1)
+indicator.grid(row=6, column=1, sticky=tk.W)
+
+root.columnconfigure(0, weight=1)
+root.rowconfigure(0, weight=1)
+mainframe.columnconfigure(1, weight=1)
+
+observer = None
+
+try:
+    root.mainloop()
+finally:
+    if observer:
+        observer.stop()
+        observer.join()
